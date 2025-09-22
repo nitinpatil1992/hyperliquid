@@ -1,0 +1,24 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  iops: "16000"
+  throughput: "1000"
+  encrypted: "true"
+  fsType: xfs
+mountOptions:
+  - noatime
+  - nodiratime
+  - nobarrier
+  - logbufs=8
+  - logbsize=256k
+  - largeio
+  - inode64
+  - swalloc
+  - allocsize=131072k

@@ -1,0 +1,19 @@
+
+# Ignore *.tgz at any level
+*.tgz
+**/*.tgz
+
+.helm/
+**/.helmignore
+
+*.log
+*.tmp
+.DS_Store
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+.env
+.env.local

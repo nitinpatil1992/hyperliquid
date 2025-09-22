@@ -1,0 +1,526 @@
+node:
+  chain: "Mainnet"  # or Testnet
+  reservedPeerIps: []  # Add trusted peer IPs
+  validatorName: "MyValidator"
+  validatorDescription: "High-performance validator"
+  commissionBps: 1000  # 10%
+  initialStakeWei: "1000000000000"  # 10,000 tokens
+
+global:
+  nameOverride: hyperliquid
+  fullnameOverride: hyperliquid-node
+
+controllers:
+  main:
+    type: statefulset
+    replicas: 1
+    strategy: RollingUpdate
+    
+    statefulset:
+      volumeClaimTemplates:
+        - name: hl-data
+          accessMode: ReadWriteOnce
+          size: 500Gi
+          storageClass: gp3
+          globalMounts:
+          - path: /home/hluser/hl
+        - name: hyperliquid-data
+          accessMode: ReadWriteOnce
+          size: 500Gi
+          storageClass: gp3
+          globalMounts:
+          - path: /home/hluser/hl/hyperliquid_data
+    
+    initContainers:
+      init-validator:
+        image:
+          repository: ubuntu
+          tag: "24.04"
+          pullPolicy: IfNotPresent
+        
+        command: 
+        - /bin/bash
+        - /scripts/init-validator.sh
+        
+        env:
+        - name: CHAIN
+          value: "Mainnet"  # or Testnet
+        - name: VALIDATOR_KEY
+          valueFrom:
+            secretKeyRef:
+              name: validator-keys
+              key: validator-key
+        - name: SIGNER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: validator-keys
+              key: signer-key
+        - name: EXTERNAL_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: VALIDATOR_NAME
+          value: "MyValidator"
+        - name: VALIDATOR_DESC
+          value: "High-performance Hyperliquid validator"
+        - name: INITIAL_STAKE_WEI
+          value: "1000000000000"  # 10,000 tokens
+        - name: COMMISSION_BPS
+          value: "1000"  # 10%
+        
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+        - name: home
+          mountPath: /home/hluser
+        - name: hl-data
+          mountPath: /home/hluser/hl
+        - name: hyperliquid-data
+          mountPath: /home/hluser/hl/hyperliquid_data
+
+    containers:
+      main:
+        image:
+          repository: hyperliquid/node # TODO: replace it with inhouse images 
+          tag: latest
+          pullPolicy: IfNotPresent
+        
+        env:
+          - name: RUST_LOG
+            value: info
+          - name: RUST_BACKTRACE
+            value: "1"
+          - name: NODE_TYPE
+            value: validator
+          - name: CHAIN
+            value: Mainnet
+          - name: NODE_ENV
+            value: "production"
+        
+        ports:
+          - containerPort: 4000
+          - containerPort: 4001
+          - containerPort: 4002
+          - containerPort: 4003
+          - containerPort: 4004
+          - containerPort: 4005
+          - containerPort: 4006
+          - containerPort: 4007
+          - containerPort: 4008
+          - containerPort: 4009
+          - containerPort: 4010
+          - name: metrics
+            containerPort: 9090
+            protocol: TCP
+
+        probes:
+          startup:
+            enabled: true
+            custom: true
+            spec:
+              exec:
+                command:
+                - /bin/bash
+                - -c
+                - "test -f /home/hluser/hl-visor && ps aux | grep -v grep | grep hl-visor"
+              initialDelaySeconds: 10
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 30
+          liveness:
+            enabled: true
+            custom: true
+            spec:
+              exec:
+                command:
+                - /bin/bash
+                - -c
+                - "ps aux | grep -v grep | grep hl-node"
+              initialDelaySeconds: 120
+              periodSeconds: 30
+              timeoutSeconds: 5
+              failureThreshold: 3
+          
+          readiness:
+            enabled: true
+            custom: true
+            spec:
+              tcpSocket:
+                port: 4001
+              initialDelaySeconds: 60
+              periodSeconds: 10
+              timeoutSeconds: 5
+              successThreshold: 1
+              failureThreshold: 3
+        
+        resources:
+          requests:
+            cpu: "4"
+            memory: "16Gi"
+            hugepages-2Mi: "16Gi"
+            ephemeral-storage: "50Gi"
+          limits:
+            cpu: "8"
+            memory: "32Gi"
+            hugepages-2Mi: "16Gi"
+            # hugepages-1Gi: "32Gi"
+            ephemeral-storage: "100Gi"
+        
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          sysctls:
+          - name: vm.hugetlb_shm_group
+            value: "1000"
+          capabilities:
+            drop: ["ALL"]
+            add: ["NET_BIND_SERVICE"]
+
+    pod:
+      priorityClassName: system-node-critical
+      tolerations:
+      - key: dedicated
+        operator: Equal
+        value: hyperliquid-node
+        effect: NoSchedule
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: hyperliquid-node
+      
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: topology.kubernetes.io/region
+                operator: In
+                values: ["ap-northeast-1"] # replace it according to platform you host validator
+              - key: node.kubernetes.io/instance-type
+                operator: In
+                values: 
+                - m6in.8xlarge
+                - m6in.16xlarge
+                - m6i.8xlarge
+                - m6i.16xlarg
+        
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values: ["hyperliquid-node"]
+              topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values: ["hyperliquid-node"]
+                topologyKey: failure-domain.beta.kubernetes.io/zone
+      
+      
+      hostNetwork: false
+      dnsPolicy: ClusterFirst
+
+service:
+  main:
+    controller: main
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "false"
+      service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-xxxxx"  # node subnet
+    ports:
+      port4000:
+        port: 4000
+        targetPort: 4000
+        protocol: TCP
+      port4001:
+        port: 4001
+        targetPort: 4001
+        protocol: TCP
+      port4002:
+        port: 4002
+        targetPort: 4002
+        protocol: TCP
+      port4003:
+        port: 4003
+        targetPort: 4003
+        protocol: TCP
+      port4004:
+        port: 4004
+        targetPort: 4004
+        protocol: TCP
+      port4005:
+        port: 4005
+        targetPort: 4005
+        protocol: TCP
+      port4006:
+        port: 4006
+        targetPort: 4006
+        protocol: TCP
+      port4007:
+        port: 4007
+        targetPort: 4007
+        protocol: TCP
+      port4008:
+        port: 4008
+        targetPort: 4008
+        protocol: TCP
+      port4009:
+        port: 4009
+        targetPort: 4009
+        protocol: TCP
+      port4010:
+        port: 4010
+        targetPort: 4010
+        protocol: TCP
+  
+  node-metrics:
+    controller: main
+    type: ClusterIP
+    ports:
+      metrics:
+        port: 9090
+        targetPort: metrics
+        protocol: TCP
+      
+
+persistence:
+  config:
+    type: configMap
+    name: hyperliquid-node-config
+    defaultMode: 0755
+    globalMounts:
+    - path: /scripts
+  hugepage:
+    type: emptyDir
+    medium: HugePages-2Mi
+    globalMounts:
+    - path: /hugepages
+  shm: # shared memoery 
+    type: emptyDir
+    medium: Memory
+    sizeLimit: 16Gi
+    globalMounts:
+    - path: /dev/shm
+  cache-volume: # temp data
+    type: emptyDir
+    medium: Memory
+    sizeLimit: 16Gi
+    globalMounts:
+    - path: /cache
+
+configMaps:
+  config:
+    enabled: true
+    name: hyperliquid-node-config
+    data:
+      init-validator.sh: |
+        #!/bin/bash
+        set -e
+
+        CHAIN="{{ .Values.node.chain }}"
+        RESERVED_PEER_IPS={{ .Values.node.reservedPeerIps | toJson }}
+        VALIDATOR_NAME="{{ .Values.node.validatorName }}"
+        VALIDATOR_DESC="{{ .Values.node.validatorDescription }}"
+        COMMISSION_BPS={{ .Values.node.commissionBps }}
+        INITIAL_STAKE_WEI="{{ .Values.node.initialStakeWei }}"
+        SIGNER_KEY="{{ .Values.node.signerKey }}"
+        VALIDATOR_KEY="{{ .Values.node.validatorKey }}"
+        EXTERNAL_IP="{{ .Values.node.externalIp }}"
+
+        echo "##### Initializing Hyperliquid Validator #####"
+        echo "Chain: ${CHAIN}"
+        echo "Validator Name: ${VALIDATOR_NAME}"
+
+        mkdir -p /home/hluser/hl/hyperliquid_data
+        mkdir -p /home/hluser/hl/data
+
+
+        cat > /home/hluser/hl/hyperliquid_data/node_config.json <<EOF
+        {
+          "key": "${SIGNER_KEY}"
+        }
+        EOF
+
+        chmod 600 /home/hluser/hl/hyperliquid_data/node_config.json
+
+        if [ "${CHAIN}" = "Testnet" ]; then
+          BINARY_URL="https://binaries.hyperliquid-testnet.xyz/Testnet"
+        else
+          BINARY_URL="https://binaries.hyperliquid.xyz/Mainnet"
+        fi
+
+        if [ ! -f /home/hluser/hl/data/.validator_registered ]; then
+          SIGNER_ADDRESS=$(/home/hluser/hl-node --chain ${CHAIN} --key ${SIGNER_KEY} print-address)
+
+          REGISTER_JSON=$(cat <<JSON
+        {
+          "type": "CValidatorAction",
+          "register": {
+            "profile": {
+              "node_ip": {"Ip": "${EXTERNAL_IP}"},
+              "signer": "${SIGNER_ADDRESS}",
+              "name": "${VALIDATOR_NAME}",
+              "description": "${VALIDATOR_DESC}",
+              "commission_bps": ${COMMISSION_BPS},
+              "disable_delegations": false
+            },
+            "initial_wei": ${INITIAL_STAKE_WEI}
+          }
+        }
+        JSON
+        )
+
+        /home/hluser/hl-node --chain ${CHAIN} --key ${VALIDATOR_KEY} \
+            send-signed-action "${REGISTER_JSON}"
+
+          touch /home/hluser/hl/data/.validator_registered
+        fi
+
+        if [ ! -z "${RESERVED_PEER_IPS}" ]; then
+          cat > /home/hluser/override_gossip_config.json <<EOF
+        {
+          "reserved_peer_ips": ${RESERVED_PEER_IPS},
+          "try_new_peers": false,
+          "chain": "${CHAIN}"
+        }
+        EOF
+        fi
+
+        echo "##### Validator initialization complete #####"
+      optimize-memory.sh: |
+        #!/bin/bash
+        
+        # Configure transparent hugepages
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled
+        echo never > /sys/kernel/mm/transparent_hugepage/defrag
+        
+        # Set up hugepages
+        echo 16384 > /proc/sys/vm/nr_hugepages_2MB
+        # echo 32 > /proc/sys/vm/nr_hugepages_1GB
+        
+        # Memory tuning
+        echo 0 > /proc/sys/vm/swappiness
+        echo 3 > /proc/sys/vm/drop_caches
+        
+        # NUMA optimizations
+        numactl --hardware
+        numactl --cpunodebind=0 --membind=0 -- $@
+
+
+serviceMonitor:
+  main:
+    enabled: true
+    serviceName: "{{ .Release.Name }}-main"
+    endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scrapeTimeout: 10s
+
+networkpolicies:
+  main:
+    enabled: true
+    controller: main
+    policyTypes:
+      - Ingress
+      - Egress
+    rules:
+      ingress:
+        - from:
+          - from:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+          ports:
+          - protocol: TCP
+            port: 4001
+          - protocol: TCP
+            port: 4002
+          - protocol: TCP
+            port: 4003
+          - protocol: TCP
+            port: 4004
+          - protocol: TCP
+            port: 4005
+          - protocol: TCP
+            port: 4006
+          - protocol: TCP
+            port: 4007
+          - protocol: TCP
+            port: 4008
+          - protocol: TCP
+            port: 4009
+          - protocol: TCP
+            port: 4010
+  
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/name: hyperliquid-node
+          - namespaceSelector:
+              matchLabels:
+                name: monitoring
+
+          ports:
+            - protocol: TCP
+              port: 9090
+      
+      egress:
+        - to:
+          - podSelector: {}
+          ports:
+            - protocol: TCP
+              port: 26656  # P2P communication
+        - to:
+          - namespaceSelector: {}
+            podSelector:
+              matchLabels:
+                k8s-app: kube-dns
+          ports:
+            - protocol: UDP
+              port: 53
+            - protocol: TCP
+              port: 53
+        - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+              except:
+                - 169.254.169.254/32  # Block IMDS (replace according to platform)
+                - 10.0.0.0/8
+                - 172.16.0.0/12
+                - 192.168.0.0/16
+          ports:
+            - protocol: TCP
+              port: 4001
+            - protocol: TCP
+              port: 4002
+            - protocol: TCP
+              port: 4003
+            - protocol: TCP
+              port: 4004
+            - protocol: TCP
+              port: 4005
+            - protocol: TCP
+              port: 4006
+            - protocol: TCP
+              port: 4007
+            - protocol: TCP
+              port: 4008
+            - protocol: TCP
+              port: 4009
+            - protocol: TCP
+              port: 40010
+            - protocol: TCP
+              port: 443

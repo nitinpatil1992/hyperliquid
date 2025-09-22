@@ -1,0 +1,17 @@
+apiVersion: v2
+name: hyperliquid-node
+description: A Helm chart for Kubernetes
+type: application
+version: 0.1.0
+
+appVersion: "1.16.0"
+
+# dependencies:
+#   - name: common
+#     repository: https://bjw-s.github.io/helm-charts
+#     version: "1.5.1"
+# Chart.yaml
+dependencies:
+  - name: common
+    version: 4.3.0
+    repository: https://bjw-s-labs.github.io/helm-charts/

@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hyperliquid-node
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: trading-hyperliquid
+  source:
+    repoURL: 'https://github.com/your-org/hyperliquid-helm.git'
+    targetRevision: main
+    path: charts/hyperliquid-node
+    helm:
+      releaseName: hyperliquid-node
+      valueFiles:
+        - values.yaml
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: hyperliquid
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  revisionHistoryLimit: 10

@@ -1,0 +1,74 @@
+name: CI and Security Scan
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  schedule:
+    - cron: '0 0 * * *'
+    
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Scan Helm charts
+        run: |
+          helm template charts/hyperliquid-node  | \
+            docker run --rm -i aquasec/trivy config --severity HIGH,CRITICAL -
+      
+      - name: Build Docker testnet image
+        run: |
+          docker build -t hl-visor:test -f app/Dockerfile app/
+      
+      - name: Build Docker mainnet image
+        run: |
+          docker build -t hl-visor:mainnet --build-arg CHAIN=Mainnet -f app/Dockerfile app/
+      
+      - name: Run Trivy hl-visor:test image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'hl-visor:test'
+          format: 'sarif'
+          output: 'trivy-image-test-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Trivy hl-visor:mainnet image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'hl-visor:mainnet'
+          format: 'sarif'
+          output: 'trivy-image-mainnet-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy testnet image results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-image-test-results.sarif'
+
+      - name: Upload Trivy mainnet image results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-image-mainnet-results.sarif'
+      
+      - name: Policy validation with OPA
+        run: |
+          docker run --rm -v $(pwd):/project openpolicyagent/opa test \
+            /project/policies/*.rego -v
