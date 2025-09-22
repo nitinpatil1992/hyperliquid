@@ -7,7 +7,11 @@ on:
     branches: ["**"]
   schedule:
     - cron: '0 0 * * *'
-    
+
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
@@ -59,12 +63,12 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy testnet image results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-image-test-results.sarif'
 
       - name: Upload Trivy mainnet image results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-image-mainnet-results.sarif'
       
