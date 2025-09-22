@@ -68,6 +68,13 @@ controllers:
         - name: COMMISSION_BPS
           value: "1000"  # 10%
         
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10000
+          runAsGroup: 10000
+          fsGroup: 10000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
         volumeMounts:
         - name: scripts
           mountPath: /scripts
@@ -168,8 +175,9 @@ controllers:
         
         securityContext:
           runAsNonRoot: true
-          runAsUser: 1000
-          runAsGroup: 1000
+          runAsUser: 10000
+          runAsGroup: 10000
+          fsGroup: 10000
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
           sysctls:
@@ -180,6 +188,13 @@ controllers:
             add: ["NET_BIND_SERVICE"]
 
     pod:
+      securityContext:
+        allowPrivilegeEscalation: false
+        fsGroup: 10000
+        readOnlyRootFilesystem: true
+        runAsGroup: 10000
+        runAsNonRoot: true
+        runAsUser: 10000
       priorityClassName: system-node-critical
       tolerations:
       - key: dedicated
