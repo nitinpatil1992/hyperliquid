@@ -43,10 +43,11 @@ RUN if [ "$CHAIN" = "Mainnet" ]; then \
     gpg --verify hl-visor.asc hl-visor && \
     chmod +x hl-visor && \
     echo "Downloading $BINARY_URL/hl-node" && \
-    curl -o hl-visor "$BINARY_URL/hl-node" && \
+    curl -o hl-node "$BINARY_URL/hl-node" && \
+    chmod +x hl-node
 
 
 EXPOSE 4000-4010
-EXPOSE 26656-26660
+# EXPOSE 26656-26660
 
 ENTRYPOINT ["./hl-visor", "run-non-validator", "--replica-cmds-style", "recent-actions"]

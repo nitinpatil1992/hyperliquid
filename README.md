@@ -149,4 +149,3 @@ High
 1. Use of cert manager to enable end to end TLS/SSL traffic across the peer network
 2. Enable falco securiy to alert based on the crirical files manipulation on running workloads 
 3. Further enhancement for specific ports can be adjusted for peer to peer connection improvement
-4. 
